@@ -5,6 +5,11 @@ require __DIR__ . '/includes/mailer.php';
 
 
 function ensure_mem_persons_table(PDO $pdo): void {
+
+    require_once __DIR__ . '/includes/db_migrations.php';
+    ensure_password_reset_columns($pdo);
+
+
     $sql = "
     CREATE TABLE IF NOT EXISTS mem_persons (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -253,6 +258,8 @@ Database::disconnect();
             <button class="btn btn-primary" type="submit" name="action" value="login">Log In</button>
             <button class="btn btn-success" type="submit" name="action" value="join">Join</button>
             <button class="btn btn-outline-secondary" type="submit" name="action" value="resend">Resend Verification</button>
+            <a class="btn btn-outline-primary" href="forgot_password.php">Forgot Password</a>
+
           </div>
         </form>
 
