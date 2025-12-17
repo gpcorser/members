@@ -63,17 +63,6 @@ function site_base_url(): string {
     return $scheme . '://' . $host . $dir;
 }
 
-/*
-function send_verification_email_smtp(string $toEmail, string $verifyUrl): bool {
-    $subject = 'Verify your email for Members';
-    $body = "Please verify your email by clicking this link:\n\n" . $verifyUrl . "\n\nIf you did not request this, you can ignore this email.";
-    $headers = "From: no-reply@" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . "\r\n" .
-               "Reply-To: no-reply@" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . "\r\n" .
-               "Content-Type: text/plain; charset=UTF-8\r\n";
-    return @mail($toEmail, $subject, $body, $headers);
-}
-    */
-
 $pdo = Database::connect();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 ensure_mem_persons_table($pdo);
@@ -130,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $verifyUrl = site_base_url() . '/verify.php?email=' . urlencode($email) . '&token=' . urlencode($tokenRaw);
 
-                $sent = send_verification_email_smtp($email, $verifyUrl);
+                $sent = send_verification_email($email, $verifyUrl);
                 if ($sent) {
                     $message = 'Account created. Verification email sent. Please verify before logging in.';
                 } else {
@@ -202,7 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $verifyUrl = site_base_url() . '/verify.php?email=' . urlencode($email) . '&token=' . urlencode($tokenRaw);
-                $sent = send_verification_email_smtp($email, $verifyUrl);
+                $sent = send_verification_email($email, $verifyUrl);
 
                 if ($sent) {
                     $message = 'Verification email resent.';

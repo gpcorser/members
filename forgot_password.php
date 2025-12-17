@@ -47,7 +47,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $resetUrl = site_base_url() . "/reset_password.php?email=" . urlencode($email) . "&token=" . urlencode($tokenRaw);
             // Reuse your existing mailer function
-            send_verification_email_smtp($email, $resetUrl);
+            send_password_reset_email($email, $resetUrl);
+
         }
     }
 }
