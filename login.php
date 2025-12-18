@@ -2,14 +2,17 @@
 session_start();
 require __DIR__ . '/../database/database.php';
 require __DIR__ . '/includes/mailer.php';
+require_once __DIR__ . '/includes/db_migrations.php';
 
+/**
+ * Only show dev-only helpers (like dev verification links) on localhost.
+ */
+function is_localhost(): bool {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    return ($ip === '127.0.0.1' || $ip === '::1');
+}
 
 function ensure_mem_persons_table(PDO $pdo): void {
-
-    require_once __DIR__ . '/includes/db_migrations.php';
-    ensure_password_reset_columns($pdo);
-
-
     $sql = "
     CREATE TABLE IF NOT EXISTS mem_persons (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -65,7 +68,10 @@ function site_base_url(): string {
 
 $pdo = Database::connect();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+// Ensure table exists, then ensure reset columns exist (even if table already existed)
 ensure_mem_persons_table($pdo);
+ensure_password_reset_columns($pdo);
 
 if (!empty($_SESSION['mem_user_id'])) {
     header('Location: update_member.php');
@@ -123,9 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($sent) {
                     $message = 'Account created. Verification email sent. Please verify before logging in.';
                 } else {
-                    // XAMPP/dev fallback: show link so you can complete flow without SMTP
-                    $message = 'Account created. Email send failed on this server. Use the verification link below (dev mode).';
-                    $devLink = $verifyUrl;
+                    // Production-safe message; dev link only on localhost
+                    $message = 'Account created. Verification email could not be sent from this server.';
+                    if (is_localhost()) {
+                        $message .= ' Use the verification link below (dev mode).';
+                        $devLink = $verifyUrl;
+                    }
                 }
             }
         }
@@ -196,8 +205,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($sent) {
                     $message = 'Verification email resent.';
                 } else {
-                    $message = 'Email send failed on this server. Use the verification link below (dev mode).';
-                    $devLink = $verifyUrl;
+                    $message = 'Verification email could not be sent from this server.';
+                    if (is_localhost()) {
+                        $message .= ' Use the verification link below (dev mode).';
+                        $devLink = $verifyUrl;
+                    }
                 }
             }
         }
@@ -225,7 +237,7 @@ Database::disconnect();
           <div class="alert alert-info"><?php echo htmlspecialchars($message); ?></div>
         <?php endif; ?>
 
-        <?php if ($devLink): ?>
+        <?php if ($devLink && is_localhost()): ?>
           <div class="alert alert-warning">
             Dev verification link: <a href="<?php echo htmlspecialchars($devLink); ?>"><?php echo htmlspecialchars($devLink); ?></a>
           </div>
@@ -248,14 +260,15 @@ Database::disconnect();
             <button class="btn btn-success" type="submit" name="action" value="join">Join</button>
             <button class="btn btn-outline-secondary" type="submit" name="action" value="resend">Resend Verification</button>
             <a class="btn btn-outline-primary" href="forgot_password.php">Forgot Password</a>
-
           </div>
         </form>
 
         <hr class="my-4">
         <div class="small text-muted">
-          Email verification is required for login. If you are testing on XAMPP and mail() is not configured,
-          the app will display a dev verification link after Join/Resend.
+          Email verification is required for login.
+          <?php if (is_localhost()): ?>
+            If you are testing on XAMPP and mail sending is not configured, the app will display a dev verification link after Join/Resend.
+          <?php endif; ?>
         </div>
       </div>
     </div>
