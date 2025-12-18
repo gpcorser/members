@@ -66,6 +66,13 @@ function site_base_url(): string {
     return $scheme . '://' . $host . $dir;
 }
 
+const MAIL_WAIT_MINUTES = 10;
+
+function mail_wait_message(string $purpose): string {
+    return $purpose . " An email will be sent shortly. Delivery can take up to " . MAIL_WAIT_MINUTES . " minutes. Please check your spam/junk folder.";
+}
+
+
 $pdo = Database::connect();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
@@ -127,10 +134,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $sent = send_verification_email($email, $verifyUrl);
                 if ($sent) {
-                    $message = 'Account created. Verification email sent. Please verify before logging in.';
+                    // $message = 'Account created. Verification email sent. Please verify before logging in.';
+                    $message = 'Account created. ' . mail_wait_message('Your verification link is on its way.');
+
                 } else {
                     // Production-safe message; dev link only on localhost
-                    $message = 'Account created. Verification email could not be sent from this server.';
+                    // $message = 'Account created. Verification email could not be sent from this server.';
+                    $message = 'Account created. ' . mail_wait_message('We were unable to send the verification email automatically.');
+
                     if (is_localhost()) {
                         $message .= ' Use the verification link below (dev mode).';
                         $devLink = $verifyUrl;
@@ -203,9 +214,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sent = send_verification_email($email, $verifyUrl);
 
                 if ($sent) {
-                    $message = 'Verification email resent.';
+                    // $message = 'Verification email resent.';
+                    $message = mail_wait_message('Verification email resent.');
+
                 } else {
-                    $message = 'Verification email could not be sent from this server.';
+                    // $message = 'Verification email could not be sent from this server.';
+                    $message = mail_wait_message('We were unable to resend the verification email automatically.');
+
                     if (is_localhost()) {
                         $message .= ' Use the verification link below (dev mode).';
                         $devLink = $verifyUrl;
@@ -260,6 +275,10 @@ Database::disconnect();
             <button class="btn btn-success" type="submit" name="action" value="join">Join</button>
             <button class="btn btn-outline-secondary" type="submit" name="action" value="resend">Resend Verification</button>
             <a class="btn btn-outline-primary" href="forgot_password.php">Forgot Password</a>
+            <div class="form-text">
+  Email delivery can take up to 10 minutes. If you do not receive it, check spam/junk and try again.
+</div>
+
           </div>
         </form>
 

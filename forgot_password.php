@@ -24,7 +24,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = normalize_email_smtp($_POST['email'] ?? '');
 
     // Always respond generically (prevents account enumeration)
-    $message = "If that email exists, a password reset link has been sent.";
+    // $message = "If that email exists, a password reset link has been sent.";
+    $message = "If that email exists, a password reset link will be sent shortly. Delivery can take up to 10 minutes. Please check your spam/junk folder.";
+
 
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $stmt = $pdo->prepare("SELECT id FROM mem_persons WHERE email = :email LIMIT 1");
@@ -81,6 +83,10 @@ Database::disconnect();
           </div>
           <button class="btn btn-primary" type="submit">Send Reset Link</button>
           <a class="btn btn-link" href="login.php">Back to Login</a>
+          <div class="form-text">
+  Email delivery can take up to 10 minutes. If you do not receive it, check spam/junk.
+</div>
+
         </form>
 
         <hr class="my-4">
