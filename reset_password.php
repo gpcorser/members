@@ -68,15 +68,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $salt = bin2hex(random_bytes(16));
                 $hash = hash_password_pbkdf2($pass1, $salt);
 
-                $upd = $pdo->prepare("
-                    UPDATE mem_persons
-                       SET salt = :salt,
-                           passwordHash = :ph,
-                           reset_token_hash = NULL,
-                           reset_expires = NULL
-                     WHERE id = :id
-                     LIMIT 1
-                ");
+$upd = $pdo->prepare("
+    UPDATE mem_persons
+       SET salt = :salt,
+           passwordHash = :ph,
+           reset_token_hash = NULL,
+           reset_expires = NULL,
+           is_verified = 1,
+           verification_token = NULL,
+           token_expires = NULL
+     WHERE id = :id
+     LIMIT 1
+");
+
                 $upd->execute([':salt' => $salt, ':ph' => $hash, ':id' => (int)$row['id']]);
 
                 $message = "Password reset successful. You may now log in.";
