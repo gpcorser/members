@@ -81,7 +81,8 @@ ensure_mem_persons_table($pdo);
 ensure_password_reset_columns($pdo);
 
 if (!empty($_SESSION['mem_user_id'])) {
-    header('Location: update_member.php');
+    // header('Location: update_member.php');
+    header('Location: issues_list.php');
     exit;
 }
 
@@ -173,7 +174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     session_regenerate_id(true);
                     $_SESSION['mem_user_id'] = (int)$user['id'];
                     $_SESSION['mem_user_email'] = $user['email'];
-                    header('Location: update_member.php');
+                    // header('Location: update_member.php');
+                    header('Location: issues_list.php');
                     exit;
                 }
             }
