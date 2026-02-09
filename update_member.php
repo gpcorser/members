@@ -3,6 +3,24 @@ session_start();
 require __DIR__ . '/../database/database.php';
 require __DIR__ . '/includes/mailer.php';
 
+// ------------------------- HELPERS -------------------------
+function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
+
+function get_csrf(): string {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function require_csrf(): void {
+    $posted = $_POST['csrf_token'] ?? '';
+    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)$posted)) {
+        http_response_code(400);
+        exit('CSRF check failed.');
+    }
+}
+
 
 function ensure_mem_persons_table(PDO $pdo): void {
     $sql = "
@@ -84,20 +102,6 @@ ensure_mem_persons_table($pdo);
 
 $userId = require_login();
 
-if (isset($_GET['logout']) && $_GET['logout'] === '1') {
-    $_SESSION = [];
-    if (ini_get("session.use_cookies")) {
-        $params = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000,
-            $params["path"], $params["domain"],
-            $params["secure"], $params["httponly"]
-        );
-    }
-    session_destroy();
-    header('Location: login.php');
-    exit;
-}
-
 // Load current user
 $stmt = $pdo->prepare("SELECT * FROM mem_persons WHERE id = :id LIMIT 1");
 $stmt->execute([':id' => $userId]);
@@ -116,6 +120,24 @@ $devLink = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'save';
+
+    if ($action === 'logout') {
+        require_csrf();
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000,
+                $params['path'], $params['domain'],
+                $params['secure'], $params['httponly']
+            );
+        }
+        session_destroy();
+        header('Location: login.php');
+        exit;
+    }
+
+    // All other POST actions require CSRF.
+    require_csrf();
 
     if ($action === 'resend_verify') {
         if ((int)$user['is_verified'] === 1) {
@@ -286,6 +308,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 Database::disconnect();
+
+$csrf = get_csrf();
 ?>
 <!doctype html>
 <html lang="en">
@@ -296,16 +320,44 @@ Database::disconnect();
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
-<div class="container" style="max-width: 900px;">
-  <div class="py-4 d-flex align-items-center justify-content-between">
-    <div>
-      <h1 class="h4 mb-1">Update Member</h1>
-      <div class="text-muted small">Logged in as: <?php echo htmlspecialchars($user['email']); ?></div>
-      <div class="text-muted small">Verified: <?php echo ((int)$user['is_verified'] === 1) ? 'Yes' : 'No'; ?></div>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container">
+    <a class="navbar-brand" href="issues_list.php">Members</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMembers" aria-controls="navMembers" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navMembers">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link active" aria-current="page" href="update_member.php">MyProfile</a></li>
+        <li class="nav-item"><a class="nav-link" href="persons_list.php">Members</a></li>
+        <li class="nav-item"><a class="nav-link" href="issues_list.php">Issues List</a></li>
+      </ul>
+
+      <div class="d-flex align-items-center gap-2">
+        <div class="text-white small d-none d-lg-block">
+          <?php
+            $meName = trim((string)($user['fname'] ?? '') . ' ' . (string)($user['lname'] ?? ''));
+            echo h($meName !== '' ? $meName : (string)($user['email'] ?? '(unknown)'));
+          ?>
+        </div>
+
+        <form method="post" class="m-0">
+          <input type="hidden" name="csrf_token" value="<?php echo h($csrf); ?>">
+          <button class="btn btn-outline-light btn-sm" type="submit" name="action" value="logout">Log out</button>
+        </form>
+      </div>
     </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-secondary btn-sm" href="?logout=1">Log out</a>
-    </div>
+  </div>
+</nav>
+
+<div class="container py-4" style="max-width: 900px;">
+
+  <div class="mb-3">
+    <h1 class="h4 mb-1">Update Member</h1>
+    <div class="text-muted small">Logged in as: <?php echo h((string)$user['email']); ?></div>
+    <div class="text-muted small">Verified: <?php echo ((int)$user['is_verified'] === 1) ? 'Yes' : 'No'; ?></div>
   </div>
 
   <?php if ($message): ?>
@@ -322,6 +374,7 @@ Database::disconnect();
     <div class="alert alert-warning d-flex align-items-center justify-content-between">
       <div>Your email is not verified yet. You must verify before you can log in again after logging out.</div>
       <form method="post" class="m-0">
+        <input type="hidden" name="csrf_token" value="<?php echo h($csrf); ?>">
         <button class="btn btn-outline-dark btn-sm" type="submit" name="action" value="resend_verify">Resend verification</button>
       </form>
     </div>
@@ -339,6 +392,7 @@ Database::disconnect();
 
   <form method="post" class="card shadow-sm">
     <div class="card-body p-4">
+      <input type="hidden" name="csrf_token" value="<?php echo h($csrf); ?>">
       <input type="hidden" name="action" value="save">
 
       <h2 class="h5 mb-3">Contact and Personal Info</h2>
@@ -419,5 +473,7 @@ Database::disconnect();
     </div>
   </form>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
