@@ -70,6 +70,18 @@ ensure_mem_comments_table($pdo);
 
 // ------------------------- HELPERS -------------------------
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
+
+// Safe excerpt helper (some shared-hosting PHP builds may not have mbstring enabled).
+function excerpt(string $s, int $max = 160): string {
+    $s = (string)$s;
+    $ellipsis = '…';
+    if (function_exists('mb_strimwidth')) {
+        return mb_strimwidth($s, 0, $max, $ellipsis);
+    }
+    // Fallback: byte-based trim (good enough for typical ASCII content).
+    if (strlen($s) <= $max) return $s;
+    return substr($s, 0, max(0, $max - 1)) . $ellipsis;
+}
 function norm_status(string $s): string {
     $s = strtolower(trim($s));
     return in_array($s, ['open','closed','onhold'], true) ? $s : 'open';
@@ -434,7 +446,7 @@ $csrf = get_csrf();
                 <td><span class="badge text-bg-<?php echo h($statusBadge); ?>"><?php echo h($i['status']); ?></span></td>
                 <td>
                   <div class="fw-semibold"><?php echo h($i['subject']); ?></div>
-                  <div class="text-muted small"><?php echo h(mb_strimwidth($i['body'], 0, 160, '…')); ?></div>
+                  <div class="text-muted small"><?php echo h(excerpt($i['body'], 160)); ?></div>
                 </td>
                 <td><?php echo h($posterName); ?></td>
                 <td class="small">
