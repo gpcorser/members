@@ -43,6 +43,26 @@ function ensure_mem_persons_table(PDO $pdo): void {
     $pdo->exec($sql);
 }
 
+/**
+ * Rate limiting table to prevent email/verification abuse (protects Postmark usage).
+ */
+function ensure_rate_limit_table(PDO $pdo): void {
+    $sql = "
+    CREATE TABLE IF NOT EXISTS mem_rate_limit (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        ip VARCHAR(45) NOT NULL,
+        email VARCHAR(255) DEFAULT NULL,
+        action VARCHAR(40) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_ip_action (ip, action),
+        KEY idx_email_action (email, action),
+        KEY idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ";
+    $pdo->exec($sql);
+}
+
 function normalize_email_smtp(string $email): string {
     return strtolower(trim($email));
 }
@@ -67,7 +87,7 @@ function site_base_url(): string {
 }
 
 /**
- * Postmark is immediate when accepted; do not imply a 10-minute queue.
+ * Postmark is immediate when accepted; do not imply a long queue.
  */
 function mail_sent_message(string $purpose): string {
     return $purpose . " Please check your inbox (and spam/junk folder).";
@@ -77,12 +97,67 @@ function mail_failed_message(string $purpose): string {
     return $purpose . " Please try again later.";
 }
 
+/**
+ * Rate limit helpers
+ */
+function client_ip(): string {
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+
+/**
+ * Limit rules:
+ *  - Max 5 attempts per IP per hour per action
+ *  - Max 3 attempts per email per hour per action
+ */
+function is_rate_limited(PDO $pdo, string $action, ?string $email = null): bool {
+    $ip = client_ip();
+
+    $ipStmt = $pdo->prepare("
+        SELECT COUNT(*) FROM mem_rate_limit
+        WHERE ip = :ip
+          AND action = :action
+          AND created_at > (NOW() - INTERVAL 1 HOUR)
+    ");
+    $ipStmt->execute([':ip' => $ip, ':action' => $action]);
+    if ((int)$ipStmt->fetchColumn() >= 5) {
+        return true;
+    }
+
+    if ($email !== null && $email !== '') {
+        $emailStmt = $pdo->prepare("
+            SELECT COUNT(*) FROM mem_rate_limit
+            WHERE email = :email
+              AND action = :action
+              AND created_at > (NOW() - INTERVAL 1 HOUR)
+        ");
+        $emailStmt->execute([':email' => $email, ':action' => $action]);
+        if ((int)$emailStmt->fetchColumn() >= 3) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function log_rate_attempt(PDO $pdo, string $action, ?string $email = null): void {
+    $stmt = $pdo->prepare("
+        INSERT INTO mem_rate_limit (ip, email, action)
+        VALUES (:ip, :email, :action)
+    ");
+    $stmt->execute([
+        ':ip' => client_ip(),
+        ':email' => ($email === '' ? null : $email),
+        ':action' => $action
+    ]);
+}
+
 $pdo = Database::connect();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Ensure table exists, then ensure reset columns exist (even if table already existed)
+// Ensure tables exist, then ensure reset columns exist (even if table already existed)
 ensure_mem_persons_table($pdo);
 ensure_password_reset_columns($pdo);
+ensure_rate_limit_table($pdo);
 
 if (!empty($_SESSION['mem_user_id'])) {
     header('Location: issues_list.php');
@@ -109,7 +184,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Please enter a valid email address.';
         } elseif (strlen($password) < 8) {
             $message = 'Password must be at least 8 characters.';
+        } elseif (is_rate_limited($pdo, 'join', $email)) {
+            $message = 'Too many join attempts. Please wait and try again later.';
         } else {
+            log_rate_attempt($pdo, 'join', $email);
+
             $stmt = $pdo->prepare("SELECT id FROM mem_persons WHERE email = :email LIMIT 1");
             $stmt->execute([':email' => $email]);
             if ($stmt->fetch()) {
@@ -142,7 +221,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $message = 'Account created. ' . mail_failed_message('We were unable to send the verification email.');
 
-                    // Dev-only link for localhost testing
                     if (is_localhost()) {
                         $message .= ' Use the verification link below (dev mode).';
                         $devLink = $verifyUrl;
@@ -184,7 +262,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'resend') {
         if ($email === '') {
             $message = 'Enter your email above, then click Resend Verification.';
+        } elseif (is_rate_limited($pdo, 'resend', $email)) {
+            $message = 'Too many resend attempts. Please wait and try again later.';
         } else {
+            log_rate_attempt($pdo, 'resend', $email);
+
             $stmt = $pdo->prepare("SELECT id, is_verified FROM mem_persons WHERE email = :email LIMIT 1");
             $stmt->execute([':email' => $email]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
